@@ -38,6 +38,46 @@ export function mountAttack(container: HTMLElement): void {
 
   const evilBox = el('input', { type: 'checkbox', id: 'evil-toggle' }) as HTMLInputElement;
 
+  const tamperBox = el('input', { type: 'checkbox', id: 'tamper-toggle' }) as HTMLInputElement;
+
+  // --- Real record of what the AEAD actually did this run.
+  // The "cryptographic results" chip below is derived from this and nothing else.
+  // It exists so the chip can go WRONG: flip the tamper toggle and a tag really
+  // fails, and the chip has to say so. That contrast is the exhibit — AES-GCM
+  // catches a flipped bit every time, and cannot catch a substituted key even once.
+  interface OpenAttempt {
+    who: string;
+    ok: boolean;
+  }
+  let openAttempts: OpenAttempt[] = [];
+  let agreements = 0;
+
+  /** seal(), with the X25519 agreement counted. */
+  async function sealCounted(
+    senderSk: Uint8Array,
+    senderPk: Uint8Array,
+    recipientPk: Uint8Array,
+    plaintext: string,
+  ): Promise<SealedMessage> {
+    agreements++;
+    return seal(senderSk, senderPk, recipientPk, plaintext);
+  }
+
+  /** open(), with the tag-verification outcome recorded. Returns null on tag failure. */
+  async function openCounted(recipientSk: Uint8Array, msg: SealedMessage, who: string): Promise<string | null> {
+    agreements++;
+    const pt = await open(recipientSk, msg);
+    openAttempts.push({ who, ok: pt !== null });
+    return pt;
+  }
+
+  /** Mallory flips one bit of the ciphertext in transit, if the toggle is on. */
+  function maybeTamper(msg: SealedMessage): boolean {
+    if (!tamperBox.checked) return false;
+    msg.ciphertext[0] ^= 0x01;
+    return true;
+  }
+
   const stepBtn = el('button', { className: 'btn btn-primary', id: 'attack-step', type: 'button' }, 'Next step') as HTMLButtonElement;
   const runAllBtn = el('button', { className: 'btn', id: 'attack-run', type: 'button' }, 'Run all steps') as HTMLButtonElement;
   const resetBtn = el('button', { className: 'btn', id: 'attack-reset', type: 'button' }, 'Reset') as HTMLButtonElement;
@@ -201,6 +241,7 @@ export function mountAttack(container: HTMLElement): void {
     let aliceMsg: SealedMessage | null = null;
     let forwarded: SealedMessage | null = null;
     let carolMsg: SealedMessage | null = null;
+    let malloryPlaintext: string | null = null;
 
     const defs: StepDef[] = [
       {
@@ -220,15 +261,22 @@ export function mountAttack(container: HTMLElement): void {
       {
         title: 'Alice encrypts to that key — real X25519 → HKDF → AES-256-GCM',
         run: async () => {
-          aliceMsg = await seal(
+          aliceMsg = await sealCounted(
             state.alice.keys.secretKey,
             state.alice.keys.publicKey,
             hexToBytes(aliceKeyForBob),
             msgInput.value || '(empty message)',
           );
+          const flipped = maybeTamper(aliceMsg);
           log('alice', 'sealed and sent', `ciphertext ${short(bytesToHex(aliceMsg.ciphertext), 24)}`);
+          if (flipped) {
+            log('mallory', 'flipped one bit of the ciphertext in transit', 'byte 0, low bit', true);
+          }
           return {
-            detail: `ciphertext ${short(bytesToHex(aliceMsg.ciphertext), 32)} (nonce ${bytesToHex(aliceMsg.nonce)}) — the encryption is flawless either way`,
+            detail: flipped
+              ? `ciphertext ${short(bytesToHex(aliceMsg.ciphertext), 32)} (nonce ${bytesToHex(aliceMsg.nonce)}) — then one bit of byte 0 was flipped on the wire. Watch what the tag does about it.`
+              : `ciphertext ${short(bytesToHex(aliceMsg.ciphertext), 32)} (nonce ${bytesToHex(aliceMsg.nonce)}) — the encryption is flawless either way`,
+            alarm: flipped,
           };
         },
       },
@@ -239,7 +287,16 @@ export function mountAttack(container: HTMLElement): void {
         {
           title: 'The ciphertext reaches… Mallory, who holds the substituted key',
           run: async () => {
-            const pt = await open(state.mallory.keys.secretKey, aliceMsg!);
+            const pt = await openCounted(state.mallory.keys.secretKey, aliceMsg!, 'Mallory');
+            if (pt === null) {
+              log('mallory', 'decryption REJECTED', 'AES-GCM tag: INVALID ✗', true);
+              return {
+                detail:
+                  'the AES-GCM tag check FAILED — Mallory holds the right key but the ciphertext was modified in flight, so the tag rejects it and she gets nothing. This is the tamper AEAD does catch.',
+                alarm: true,
+              };
+            }
+            malloryPlaintext = pt;
             log('mallory', `decrypted Alice’s message: “${pt}”`, 'AES-GCM tag: valid ✓', true);
             return {
               detail: `Mallory decrypts with her own secret key: “${pt}” — the AES-GCM tag verifies, because the message really was encrypted to her`,
@@ -250,12 +307,18 @@ export function mountAttack(container: HTMLElement): void {
         {
           title: 'Mallory re-encrypts to bob’s REAL key and forwards it',
           run: async () => {
-            const pt = await open(state.mallory.keys.secretKey, aliceMsg!);
-            forwarded = await seal(
+            if (malloryPlaintext === null) {
+              return {
+                detail:
+                  'nothing to forward — Mallory never recovered the plaintext, so the relay stalls here. Bob simply never receives the message.',
+                alarm: true,
+              };
+            }
+            forwarded = await sealCounted(
               state.mallory.keys.secretKey,
               state.mallory.keys.publicKey,
               state.bob.keys.publicKey,
-              pt!,
+              malloryPlaintext,
             );
             return {
               detail: `a fresh, valid ciphertext ${short(bytesToHex(forwarded.ciphertext), 24)} heads to bob — the conversation will look completely normal`,
@@ -266,7 +329,17 @@ export function mountAttack(container: HTMLElement): void {
         {
           title: 'Bob decrypts the forwarded copy — nothing looks wrong',
           run: async () => {
-            const pt = await open(state.bob.keys.secretKey, forwarded!);
+            if (forwarded === null) {
+              return {
+                detail: 'nothing arrived. The flipped bit broke the relay before it reached Bob.',
+                alarm: true,
+              };
+            }
+            const pt = await openCounted(state.bob.keys.secretKey, forwarded, 'Bob');
+            if (pt === null) {
+              log('bob', 'decryption REJECTED', 'AES-GCM tag: INVALID ✗', true);
+              return { detail: 'the AES-GCM tag check FAILED for Bob — the message did not survive the wire.', alarm: true };
+            }
             log('bob', `received: “${pt}”`, 'AES-GCM tag: valid ✓');
             return {
               detail: 'Bob reads the message Alice wrote. Two working E2EE hops, one silent reader in the middle.',
@@ -278,7 +351,15 @@ export function mountAttack(container: HTMLElement): void {
       defs.push({
         title: 'Bob decrypts it',
         run: async () => {
-          const pt = await open(state.bob.keys.secretKey, aliceMsg!);
+          const pt = await openCounted(state.bob.keys.secretKey, aliceMsg!, 'Bob');
+          if (pt === null) {
+            log('bob', 'decryption REJECTED', 'AES-GCM tag: INVALID ✗', true);
+            return {
+              detail:
+                'the AES-GCM tag check FAILED — one flipped bit and the message is refused outright. AEAD catches this every time.',
+              alarm: true,
+            };
+          }
           log('bob', `received: “${pt}”`, 'AES-GCM tag: valid ✓');
           return { detail: 'straight from Alice to Bob — one key, one reader' };
         },
@@ -291,7 +372,7 @@ export function mountAttack(container: HTMLElement): void {
         run: async () => {
           const res = await state.dir.lookup('bob', 'main', null);
           log('carol', `directory says bob’s key is ${short(res!.binding.keyHex, 18)}`, `epoch ${res!.binding.epoch}`);
-          carolMsg = await seal(
+          carolMsg = await sealCounted(
             state.carol.keys.secretKey,
             state.carol.keys.publicKey,
             hexToBytes(res!.binding.keyHex),
@@ -308,7 +389,12 @@ export function mountAttack(container: HTMLElement): void {
       {
         title: 'Bob decrypts Carol’s message too',
         run: async () => {
-          const pt = await open(state.bob.keys.secretKey, carolMsg!);
+          const pt = await openCounted(state.bob.keys.secretKey, carolMsg!, 'Bob (from Carol)');
+          if (pt === null) {
+            log('bob', 'decryption REJECTED', 'AES-GCM tag: INVALID ✗', true);
+            renderVerdict();
+            return { detail: 'Carol’s message was rejected by the tag check. Now look at the verdict.', alarm: true };
+          }
           log('bob', `received: “${pt}”`, 'AES-GCM tag: valid ✓');
           renderVerdict();
           return { detail: 'both conversations work. Now look at the verdict.' };
@@ -322,19 +408,50 @@ export function mountAttack(container: HTMLElement): void {
   function renderVerdict(): void {
     clear(verdictRegion);
     const malicious = state.dir.isMalicious;
+    // Derived from what the AEAD actually returned this run — never asserted.
+    const failed = openAttempts.filter((a) => !a.ok);
+    const total = openAttempts.length;
+    const allOk = total > 0 && failed.length === 0;
     const cryptoSlot = el(
       'div',
       { className: 'verdict-slot' },
       el('p', { className: 'slot-title' }, 'Cryptographic results'),
-      el(
-        'p',
-        { className: 'chip chip-neutral' },
-        el('span', { className: 'chip-icon', 'aria-hidden': 'true' }, '✓'),
-        'Every AES-GCM tag verified · every X25519 agreement succeeded',
-      ),
+      total === 0
+        ? el(
+            'p',
+            { className: 'chip chip-neutral' },
+            el('span', { className: 'chip-icon', 'aria-hidden': 'true' }, '·'),
+            'No decryption attempted yet — nothing to report',
+          )
+        : allOk
+          ? el(
+              'p',
+              { className: 'chip chip-neutral' },
+              el('span', { className: 'chip-icon', 'aria-hidden': 'true' }, '✓'),
+              `All ${total} AES-GCM tag${total === 1 ? '' : 's'} verified · ${agreements} X25519 agreement${agreements === 1 ? '' : 's'} completed`,
+            )
+          : el(
+              'p',
+              { className: 'chip chip-alarm' },
+              el('span', { className: 'chip-icon', 'aria-hidden': 'true' }, '✗'),
+              `${failed.length} of ${total} AES-GCM tag check${total === 1 ? '' : 's'} FAILED (${failed.map((a) => a.who).join(', ')}) — the ciphertext was modified in flight and the tag refused it`,
+            ),
     );
     const verdictSlot = el('div', { className: 'verdict-slot' }, el('p', { className: 'slot-title' }, 'Security verdict'));
-    if (malicious) {
+    if (failed.length > 0) {
+      // The bit-flip path: this is the contrast case, and it is the ONE thing the
+      // AEAD can see. Say so, and do not claim the run was clean.
+      verdictSlot.append(
+        verdictChip('warn', 'TAMPER DETECTED — the flipped bit was caught and the message refused'),
+        el(
+          'p',
+          { className: 'note' },
+          malicious
+            ? 'Note what did and did not happen. The key substitution went by in total silence; the flipped bit was caught instantly. AES-GCM defends the bytes, not the name→key binding. Untick the bit-flip and run it again to see the substitution alone.'
+            : 'One flipped bit and the tag refuses the whole message — AEAD catches this every time, with no directory, no ledger, no transparency log required. That is the check that works. The next run shows the one it cannot make.',
+        ),
+      );
+    } else if (malicious) {
       verdictSlot.append(
         verdictChip('alarm', 'INTERCEPTED, UNDETECTED — Alice encrypted to the attacker'),
         el(
@@ -363,6 +480,8 @@ export function mountAttack(container: HTMLElement): void {
   async function reset(): Promise<void> {
     steps = buildSteps();
     stepIdx = 0;
+    openAttempts = [];
+    agreements = 0;
     for (const l of Object.values(actorLogs)) clear(l);
     clear(verdictRegion);
     renderStepList();
@@ -403,6 +522,7 @@ export function mountAttack(container: HTMLElement): void {
   runAllBtn.addEventListener('click', () => void runAll());
   resetBtn.addEventListener('click', () => void reset());
   evilBox.addEventListener('change', () => void setMalicious(evilBox.checked));
+  tamperBox.addEventListener('change', () => void reset());
 
   state.onModeChange.push(() => {
     evilBox.checked = state.dir.isMalicious;
@@ -427,6 +547,12 @@ export function mountAttack(container: HTMLElement): void {
           { className: 'evil-toggle' },
           evilBox,
           el('label', { for: 'evil-toggle' }, 'Directory turns malicious (attack mode)'),
+        ),
+        el(
+          'span',
+          { className: 'evil-toggle' },
+          tamperBox,
+          el('label', { for: 'tamper-toggle' }, 'Flip one bit of the ciphertext in transit'),
         ),
         el(
           'span',
