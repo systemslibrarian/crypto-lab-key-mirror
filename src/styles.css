@@ -11,6 +11,7 @@
   --surface: #101d1b;
   --surface-2: #172826;
   --border: #2e4744;
+  --control-border: #617a76;
   --text: #e7f2f0;
   --text-dim: #a3bcb8;
   --accent-text: #4fd1c5;
@@ -28,6 +29,7 @@ html[data-theme='light'] {
   --surface: #ffffff;
   --surface-2: #e7efee;
   --border: #b9cdca;
+  --control-border: #718681;
   --text: #142522;
   --text-dim: #405955;
   --accent-text: #0b5d57;
@@ -128,7 +130,7 @@ body {
 #app input[type='text'] {
   background-color: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 0.45rem 0.6rem;
   min-width: 13rem;
