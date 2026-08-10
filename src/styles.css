@@ -51,6 +51,22 @@ html[data-theme='light'] {
   color-scheme: light;
 }
 
+/* Border-box everywhere.
+   The stylesheet shipped without a box-sizing reset, which was not a style
+   preference — it was a WCAG 1.4.10 (Reflow) failure at phone width on every
+   single state of the page. The shared `.cl-hero` block gives `.cl-hero-why`
+   `width: 100%` below 640px, and that box carries `.85rem 1.05rem` of padding
+   plus a 1px border; under content-box that resolves to 100% PLUS 35.6px, so
+   the hero overflowed and the document scrolled sideways — 400px of content in
+   a 380px viewport. Nothing else in this file sets an explicit width on a box
+   that also has padding or a border, so the reset changes no layout that was
+   correct. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background-color: var(--bg);
@@ -141,7 +157,15 @@ body {
   min-height: 44px;
   background-color: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  /* --control-border, NOT --border. The button's own fill sits 1.13:1 (dark) /
+     1.17:1 (light) from the panel behind it, so the border is the only thing
+     that says where the control is — and on --border it measured 1.54-1.73:1
+     dark and 1.42-1.66:1 light, i.e. nothing a reader can see. SC 1.4.11 wants
+     3:1; --control-border delivers 3.31-4.05:1 against every surface here.
+     The token already existed and was applied to exactly ONE rule (the text
+     input) — and `border-contrast.spec.ts` queried exactly that one rule, so
+     the check could not fail no matter how many controls were left out. */
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 0.5rem 0.9rem;
   cursor: pointer;
@@ -172,7 +196,13 @@ body {
   background-color: color-mix(in srgb, #ef4444 7%, transparent);
 }
 .evil-toggle label { cursor: pointer; font-weight: 600; }
-.evil-toggle input { cursor: pointer; width: 1.05rem; height: 1.05rem; accent-color: #b03018; }
+/* Themed, not a fixed hex. `accent-color` paints the CHECKED state of this
+   checkbox, which is the "attack mode is on" indicator — visual information
+   about a state, so SC 1.4.11 wants 3:1. The hard-coded #b03018 was chosen for
+   the light theme (6.40:1 there) and left the dark theme at 2.70:1 against the
+   card. --alarm-text is the same red in light and the lighter tint the rest of
+   the dark palette already uses, so both themes clear it. */
+.evil-toggle input { cursor: pointer; width: 1.05rem; height: 1.05rem; accent-color: var(--alarm-text); }
 
 fieldset.layers {
   border: 1px solid var(--border);
@@ -417,8 +447,19 @@ fieldset.layers legend { font-size: 0.78rem; font-weight: 600; color: var(--text
 .kv dt { font-size: 0.8rem; font-weight: 600; color: var(--text-dim); }
 .kv dd { margin: 0; overflow-wrap: anywhere; font-size: 0.85rem; }
 
-/* Stepper table */
-.tracewrap { overflow-x: auto; margin-top: 0.6rem; }
+/* Stepper table.
+   `tabindex="0"` for WCAG 2.1.1 makes this an operable region, so under SC
+   1.4.11 it owes a 3:1 boundary — and it shipped with none at all (measured
+   0:1: no border declared, no fill of its own). The bordered box matches the
+   idiom `.label-scroll` already uses for the lab's other focusable scroller;
+   the padding keeps it from doubling up with the table's own gridlines. */
+.tracewrap {
+  overflow-x: auto;
+  margin-top: 0.6rem;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  padding: 0.4rem;
+}
 .trace-table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
 .trace-table th, .trace-table td {
   border: 1px solid var(--border);
@@ -436,7 +477,11 @@ fieldset.layers legend { font-size: 0.78rem; font-weight: 600; color: var(--text
 .label-scroll {
   max-height: 17rem;
   overflow: auto;
-  border: 1px solid var(--border);
+  /* Focusable and keyboard-scrollable, so this is an operable region and its
+     edge owes 3:1 (SC 1.4.11). Its fill is `--surface` inside a `--surface`
+     panel — 1:1 — so the border is the only thing marking where the list is
+     cut off, and on --border it measured 1.73:1 dark / 1.66:1 light. */
+  border: 1px solid var(--control-border);
   border-radius: 10px;
   padding: 0.5rem;
   background-color: var(--surface);
