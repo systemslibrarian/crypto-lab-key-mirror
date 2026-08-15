@@ -13,7 +13,6 @@ export const NONTEXT_BASELINE: Record<
 > = {
   "control-boundary|a.cl-btn": { ratio: 1.48, required: 3.0, unverified: false },
   "control-boundary|button#attack-step.btn.btn-primary": { ratio: 2.44, required: 3.0, unverified: false },
-  "control-boundary|button#cl-theme-toggle.cl-btn.cl-icon": { ratio: 1.48, required: 3.0, unverified: false },
   "control-boundary|button#ladder-run.btn.btn-primary": { ratio: 2.44, required: 3.0, unverified: false },
   "control-boundary|button#monitor-run.btn.btn-primary": { ratio: 2.44, required: 3.0, unverified: false },
   "control-boundary|button#stepper-next.btn.btn-primary": { ratio: 2.44, required: 3.0, unverified: false },

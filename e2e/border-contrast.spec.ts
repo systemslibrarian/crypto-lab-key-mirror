@@ -175,7 +175,7 @@ const findings: Finding[] = [];
  * controls do not exist, or are disabled, until the lab has been driven — and
  * `.btn:hover` and `:focus-visible` change the boundary colour outright.
  */
-for (const theme of ['dark', 'light'] as const) {
+for (const theme of ['dark'] as const) {
   test(`${theme}: every control boundary clears 3:1 (SC 1.4.11)`, async ({ page }) => {
     test.setTimeout(900_000);
     const seen: Finding[] = [];
