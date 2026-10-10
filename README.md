@@ -60,7 +60,7 @@ npm install
 npm run dev        # local dev server
 npm test           # 50 unit tests incl. spec KATs
 npm run build      # typecheck + production build
-npm run test:a11y  # axe WCAG 2.1 A/AA gate, both themes (needs: npx playwright install chromium)
+npm run test:a11y  # axe WCAG 2.1 A/AA gate, dark desktop/380px (needs: npx playwright install chromium)
 ```
 
 ## Related Demos
