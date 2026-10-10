@@ -7,6 +7,7 @@
 
 import { bytesEqual } from '../core/bytes';
 import { nodeHash } from './tree';
+import { isHash, isPowerOfTwo, validProof } from './verify';
 
 export interface TraceStep {
   kind: 'seed' | 'combine-left' | 'combine-right' | 'skip';
@@ -52,7 +53,9 @@ export async function traceConsistency(
     failReason: reason,
   });
 
+  if (!Number.isSafeInteger(oldSize) || !Number.isSafeInteger(newSize)) return fail('sizes must be safe integers');
   if (oldSize < 1 || oldSize > newSize) return fail('sizes out of range');
+  if (!isHash(oldRoot) || !isHash(newRoot) || !validProof(proof)) return fail('malformed root or proof hash');
   if (oldSize === newSize) {
     const ok = proof.length === 0 && bytesEqual(oldRoot, newRoot);
     return {
@@ -69,15 +72,15 @@ export async function traceConsistency(
   }
 
   const path = proof.slice();
-  const prepended = (oldSize & (oldSize - 1)) === 0;
+  const prepended = isPowerOfTwo(oldSize);
   if (prepended) path.unshift(oldRoot);
   if (path.length === 0) return fail('empty proof');
 
   let fn = oldSize - 1;
   let sn = newSize - 1;
   while (fn % 2 === 1) {
-    fn >>= 1;
-    sn >>= 1;
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
   }
 
   let fr = path[0];
@@ -112,8 +115,8 @@ export async function traceConsistency(
         sr,
       });
       while (fn % 2 === 0 && fn !== 0) {
-        fn >>= 1;
-        sn >>= 1;
+        fn = Math.floor(fn / 2);
+        sn = Math.floor(sn / 2);
       }
     } else {
       sr = await nodeHash(sr, c);
@@ -127,8 +130,8 @@ export async function traceConsistency(
         sr,
       });
     }
-    fn >>= 1;
-    sn >>= 1;
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
   }
 
   const structureOk = sn === 0;

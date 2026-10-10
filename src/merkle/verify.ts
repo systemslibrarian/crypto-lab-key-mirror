@@ -9,6 +9,23 @@
 import { bytesEqual } from '../core/bytes';
 import { leafHash, nodeHash } from './tree';
 
+export function isHash(value: unknown): value is Uint8Array {
+  return value instanceof Uint8Array && value.length === 32;
+}
+
+export function validProof(proof: unknown): proof is Uint8Array[] {
+  if (!Array.isArray(proof)) return false;
+  for (const node of proof) if (!isHash(node)) return false;
+  return true;
+}
+
+/** Avoid signed 32-bit masks and floating-point log2 rounding near 2^53. */
+export function isPowerOfTwo(size: number): boolean {
+  if (!Number.isSafeInteger(size) || size < 1) return false;
+  while (size % 2 === 0) size /= 2;
+  return size === 1;
+}
+
 /** Verify an RFC 6962 audit path for leaf (0-based leafIndex) in a tree of treeSize. */
 export async function verifyInclusion(
   leaf: Uint8Array,
@@ -17,8 +34,9 @@ export async function verifyInclusion(
   proof: Uint8Array[],
   root: Uint8Array,
 ): Promise<boolean> {
-  if (!Number.isInteger(leafIndex) || !Number.isInteger(treeSize)) return false;
+  if (!Number.isSafeInteger(leafIndex) || !Number.isSafeInteger(treeSize)) return false;
   if (leafIndex < 0 || treeSize < 1 || leafIndex >= treeSize) return false;
+  if (!(leaf instanceof Uint8Array) || !isHash(root) || !validProof(proof)) return false;
 
   let fn = leafIndex;
   let sn = treeSize - 1;
@@ -31,8 +49,8 @@ export async function verifyInclusion(
       if (fn % 2 === 0) {
         // right-hand edge of an incomplete subtree: skip missing levels
         while (fn % 2 === 0 && fn !== 0) {
-          fn = fn >> 1;
-          sn = sn >> 1;
+          fn = Math.floor(fn / 2);
+          sn = Math.floor(sn / 2);
         }
         if (fn === 0 && sn !== 0) {
           // consumed the whole index; remaining proof entries would be extra
@@ -41,8 +59,8 @@ export async function verifyInclusion(
     } else {
       r = await nodeHash(r, p);
     }
-    fn = fn >> 1;
-    sn = sn >> 1;
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
   }
   return sn === 0 && bytesEqual(r, root);
 }
@@ -55,15 +73,17 @@ export async function verifyConsistency(
   newRoot: Uint8Array,
   proof: Uint8Array[],
 ): Promise<boolean> {
-  if (!Number.isInteger(oldSize) || !Number.isInteger(newSize)) return false;
+  if (!Number.isSafeInteger(oldSize) || !Number.isSafeInteger(newSize)) return false;
   if (oldSize < 1 || oldSize > newSize) return false;
+  if (!isHash(oldRoot) || !isHash(newRoot) || !validProof(proof)) return false;
   if (oldSize === newSize) {
     return proof.length === 0 && bytesEqual(oldRoot, newRoot);
   }
 
   // If oldSize is an exact power of two, the old root itself is the first node.
   const path = proof.slice();
-  if ((oldSize & (oldSize - 1)) === 0) {
+  const completeSubtree = isPowerOfTwo(oldSize);
+  if (completeSubtree) {
     path.unshift(oldRoot);
   }
   if (path.length === 0) return false;
@@ -71,13 +91,13 @@ export async function verifyConsistency(
   let fn = oldSize - 1;
   let sn = newSize - 1;
   while (fn % 2 === 1) {
-    fn = fn >> 1;
-    sn = sn >> 1;
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
   }
 
   let fr = path[0];
   let sr = path[0];
-  if ((oldSize & (oldSize - 1)) === 0 && !bytesEqual(fr, oldRoot)) return false;
+  if (completeSubtree && !bytesEqual(fr, oldRoot)) return false;
 
   for (let i = 1; i < path.length; i++) {
     const c = path[i];
@@ -87,14 +107,14 @@ export async function verifyConsistency(
       fr = await nodeHash(c, fr);
       sr = await nodeHash(c, sr);
       while (fn % 2 === 0 && fn !== 0) {
-        fn = fn >> 1;
-        sn = sn >> 1;
+        fn = Math.floor(fn / 2);
+        sn = Math.floor(sn / 2);
       }
     } else {
       sr = await nodeHash(sr, c);
     }
-    fn = fn >> 1;
-    sn = sn >> 1;
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
   }
   return sn === 0 && bytesEqual(fr, oldRoot) && bytesEqual(sr, newRoot);
 }
