@@ -71,17 +71,20 @@ npm run test:a11y  # axe WCAG 2.1 A/AA gate, both themes (needs: npx playwright 
 
 ## Build & Verify
 
-- **50 Vitest tests, all passing**, including:
+- **Vitest regression coverage**, including:
   - RFC 6962 Merkle KATs — the CT reference tree: empty-tree hash, all 8 incremental roots, 5 audit-path vectors, 4 consistency-proof vectors (`src/merkle/kat.test.ts`);
   - RFC 9381 Appendix B.3 ECVRF KATs — Examples 16–18 in full (pi, beta, H, and the try-and-increment counter), prove and verify (`src/vrf/ecvrf.test.ts`);
   - RFC 7748 §6.1 X25519 KAT and FIPS 180-4 SHA-256 KATs;
   - fail-closed rejection tests for every verifier, an attack test proving layers 0–3 pass while views diverge, gossip detection, and monitor findings;
   - the UI stepper's traced verifier pinned to the real verifier (`src/merkle/trace.test.ts`).
+  - a historical Google CT inclusion proof at tree size 2,807,499,968 (pinned root, not a fresh service/signature check), independent recursive BigInt proof controls through `Number.MAX_SAFE_INTEGER`, large consistency proofs, and malformed/unsafe input rejection (`src/merkle/large-proofs.test.ts`).
+
+The reusable Number-based inclusion and consistency APIs, and the traced verifier, accept only safe integer sizes and indices (up to `Number.MAX_SAFE_INTEGER`, 2^53−1). Larger RFC uint64 sizes require a different BigInt API; they are rejected here rather than rounded or truncated. Hashes must be 32 bytes and proof containers must be readable arrays, including rejection of sparse or malformed entries.
 - **Accessibility gate**: `@axe-core/playwright` scans the production build in **both** themes with every exhibit driven to its richest (alarm) state; zero WCAG 2.1 A/AA violations required, enforced in CI before deploy.
 
 ## Performance
 
-All proofs are over toy-sized logs (≤ 33 leaves); every interaction completes in milliseconds. ECVRF proving is a few curve multiplications (~1 ms); nothing here is performance-sensitive.
+In-page proofs are over toy-sized logs (≤ 33 leaves); the offline verifier regression suite also covers large counters without allocating billions of leaves. ECVRF proving is a few curve multiplications; these tests do not measure production-scale log throughput.
 
 ---
 
