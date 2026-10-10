@@ -80,7 +80,7 @@ npm run test:a11y  # axe WCAG 2.1 A/AA gate, both themes (needs: npx playwright 
   - a historical Google CT inclusion proof at tree size 2,807,499,968 (pinned root, not a fresh service/signature check), independent recursive BigInt proof controls through `Number.MAX_SAFE_INTEGER`, large consistency proofs, and malformed/unsafe input rejection (`src/merkle/large-proofs.test.ts`).
 
 The reusable Number-based inclusion and consistency APIs, and the traced verifier, accept only safe integer sizes and indices (up to `Number.MAX_SAFE_INTEGER`, 2^53−1). Larger RFC uint64 sizes require a different BigInt API; they are rejected here rather than rounded or truncated. Hashes must be 32 bytes and proof containers must be readable arrays, including rejection of sparse or malformed entries.
-- **Accessibility gate**: `@axe-core/playwright` scans the production build in **both** themes with every exhibit driven to its richest (alarm) state; zero WCAG 2.1 A/AA violations required, enforced in CI before deploy.
+- **Accessibility gate**: `@axe-core/playwright` scans the production build in the configured **dark** theme at desktop and 380px, with every exhibit driven to its richest (alarm) state; zero WCAG 2.1 A/AA violations required, enforced in CI before deploy.
 
 ## Performance
 
