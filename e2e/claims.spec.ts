@@ -58,6 +58,7 @@ async function keyFromLog(page: Page, actor: string): Promise<string> {
 
 test('exhibit 1 — honest directory: one ledger, one key, CONSISTENT verdict', async ({ page }) => {
   await page.goto('.');
+  await expect(page.locator('.cl-hero-title')).toHaveText('Key Mirror');
   await runAttack(page, { malicious: false, tamper: false });
 
   // One ledger only, and the page says so.
