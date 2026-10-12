@@ -9,7 +9,7 @@ import { bytesToHex } from '../core/bytes';
 import { generateKeyPair, open, seal } from '../e2ee/box';
 import { verifyInclusion } from '../merkle/verify';
 import { DirectoryClient, gossip, monitorOwnBindings } from './client';
-import { KeyDirectory } from './server';
+import { KeyDirectory, sthMessage, bindingMessage } from './server';
 import type { DefenseLayer } from './types';
 
 async function setup() {
@@ -25,6 +25,22 @@ async function setup() {
 }
 
 describe('honest directory', () => {
+  it('emits native-verifiable pure Ed25519 signatures bound to the actual head and binding', async () => {
+    const { dir } = await setup();
+    const response = await dir.lookup('bob', 'main', null);
+    expect(response).not.toBeNull();
+    const bytes = (input: Uint8Array) => new Uint8Array(input).buffer;
+    const key = await crypto.subtle.importKey('raw', bytes(dir.signingPk), 'Ed25519', false, ['verify']);
+    const res = response!;
+    const message = sthMessage(res.sth.epoch, res.sth.size, res.sth.root);
+    expect(await crypto.subtle.verify('Ed25519', key, bytes(res.sth.signature), bytes(message))).toBe(true);
+    const changed = message.slice();
+    changed[changed.length - 1] ^= 1;
+    expect(await crypto.subtle.verify('Ed25519', key, bytes(res.sth.signature), bytes(changed))).toBe(false);
+    expect(await crypto.subtle.verify('Ed25519', key, bytes(res.bindingSignature), bytes(bindingMessage(res.binding)))).toBe(true);
+    expect(await crypto.subtle.verify('Ed25519', key, bytes(res.bindingSignature), bytes(message))).toBe(false);
+  });
+
   it('all layers pass and both views return the same key', async () => {
     const { dir, bob } = await setup();
     const aliceClient = new DirectoryClient('alice', dir.signingPk);

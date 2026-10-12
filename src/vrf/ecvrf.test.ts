@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { bytesToHex, hexToBytes } from '../core/bytes';
-import { publicKey, proofToHash, vrfProve, vrfVerify } from './ecvrf';
+import { decodeProof, publicKey, proofToHash, vrfProve, vrfVerify } from './ecvrf';
 
 interface Vector {
   name: string;
@@ -107,6 +107,42 @@ describe('ECVRF-EDWARDS25519-SHA512-TAI — RFC 9381 B.3 vectors', () => {
     const identity = new Uint8Array(32);
     identity[0] = 0x01; // ed25519 encoding of the identity element (y = 1)
     expect(vrfVerify(identity, hexToBytes(v.alpha), hexToBytes(v.pi)).valid).toBe(false);
+  });
+
+  it('retains strict RFC 8032 decoding for noncanonical Edwards encodings', () => {
+    const v = VECTORS[0];
+    const proof = hexToBytes(v.pi);
+    expect(decodeProof(proof)).not.toBeNull();
+    const fieldPrime = (1n << 255n) - 19n;
+    const littleEndian = (value: bigint) => {
+      const bytes = new Uint8Array(32);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = Number(value & 255n);
+        value >>= 8n;
+      }
+      return bytes;
+    };
+    const negativeZero = littleEndian(1n); // x=0 with its forbidden sign bit set
+    negativeZero[31] |= 128;
+    for (const encoded of [littleEndian(fieldPrime), littleEndian(fieldPrime + 1n), negativeZero]) {
+      const malformed = proof.slice();
+      malformed.set(encoded, 0);
+      expect(decodeProof(malformed)).toBeNull();
+      expect(vrfVerify(encoded, hexToBytes(v.alpha), proof)).toEqual({ valid: false, beta: null });
+    }
+  });
+
+  it('rejects s exactly at the subgroup order without changing proof byte order', () => {
+    const proof = hexToBytes(VECTORS[0].pi);
+    const order = (1n << 252n) + 27742317777372353535851937790883648493n;
+    let scalar = order - 1n;
+    for (let i = 48; i < 80; i++) {
+      proof[i] = Number(scalar & 255n);
+      scalar >>= 8n;
+    }
+    expect(decodeProof(proof)?.s).toBe(order - 1n);
+    proof[48] += 1; // order's least significant byte is 0xed; no carry here
+    expect(decodeProof(proof)).toBeNull();
   });
 
   it('is deterministic: same input, same beta; different input, different beta', () => {

@@ -24,6 +24,25 @@ describe('X25519 — RFC 7748 §6.1 vector', () => {
     expect(bytesToHex(dh(hexToBytes(ALICE_SK), hexToBytes(BOB_PK)))).toBe(SHARED);
     expect(bytesToHex(dh(hexToBytes(BOB_SK), hexToBytes(ALICE_PK)))).toBe(SHARED);
   });
+
+  it('rejects malformed X25519 key lengths and low-order peer keys', () => {
+    for (const length of [0, 31, 33]) {
+      expect(() => keyPairFromSeed(new Uint8Array(length))).toThrow('seed must be 32 bytes');
+      expect(() => dh(new Uint8Array(length), hexToBytes(BOB_PK))).toThrow();
+      expect(() => dh(hexToBytes(ALICE_SK), new Uint8Array(length))).toThrow();
+    }
+    expect(() => dh(hexToBytes(ALICE_SK), new Uint8Array(32))).toThrow();
+  });
+
+  it('preserves supplied seed bytes while producing the published keys and shared secret', () => {
+    const seed = hexToBytes(ALICE_SK);
+    const before = seed.slice();
+    const pair = keyPairFromSeed(seed);
+    expect(bytesToHex(dh(pair.secretKey, hexToBytes(BOB_PK)))).toBe(SHARED);
+    expect(bytesToHex(pair.publicKey)).toBe(ALICE_PK);
+    expect(seed).toEqual(before);
+    expect(pair.secretKey).toEqual(before);
+  });
 });
 
 describe('seal/open', () => {

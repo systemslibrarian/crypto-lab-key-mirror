@@ -58,10 +58,12 @@ Security model: the **directory server is the adversary**. Clients verify everyt
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # 50 unit tests incl. spec KATs
+npm test           # 61 unit tests incl. spec KATs and input-boundary controls
 npm run build      # typecheck + production build
 npm run test:a11y  # axe WCAG 2.1 A/AA gate, dark desktop/380px (needs: npx playwright install chromium)
 ```
+
+Requires Node 20.19+; CI uses Node 22.
 
 ## Related Demos
 
@@ -75,6 +77,7 @@ npm run test:a11y  # axe WCAG 2.1 A/AA gate, dark desktop/380px (needs: npx play
   - RFC 6962 Merkle KATs — the CT reference tree: empty-tree hash, all 8 incremental roots, 5 audit-path vectors, 4 consistency-proof vectors (`src/merkle/kat.test.ts`);
   - RFC 9381 Appendix B.3 ECVRF KATs — Examples 16–18 in full (pi, beta, H, and the try-and-increment counter), prove and verify (`src/vrf/ecvrf.test.ts`);
   - RFC 7748 §6.1 X25519 KAT and FIPS 180-4 SHA-256 KATs;
+  - strict noncanonical Edwards encoding and exact subgroup-order boundaries, malformed/low-order X25519 rejection and unchanged seed bytes; actual directory signatures independently verified with native WebCrypto, including changed-message and cross-domain rejection;
   - fail-closed rejection tests for every verifier, an attack test proving layers 0–3 pass while views diverge, gossip detection, and monitor findings;
   - the UI stepper's traced verifier pinned to the real verifier (`src/merkle/trace.test.ts`).
   - a historical Google CT inclusion proof at tree size 2,807,499,968 (pinned root, not a fresh service/signature check), independent recursive BigInt proof controls through `Number.MAX_SAFE_INTEGER`, large consistency proofs, and malformed/unsafe input rejection (`src/merkle/large-proofs.test.ts`).

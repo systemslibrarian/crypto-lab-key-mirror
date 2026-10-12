@@ -7,9 +7,9 @@
  * every operation below succeeds perfectly for the attacker.
  */
 
-import { x25519 } from '@noble/curves/ed25519';
-import { hkdf } from '@noble/hashes/hkdf';
-import { sha256 as nobleSha256 } from '@noble/hashes/sha2';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { concatBytes, randomBytes, utf8ToBytes, bytesToUtf8 } from '../core/bytes';
 
 export interface BoxKeyPair {
