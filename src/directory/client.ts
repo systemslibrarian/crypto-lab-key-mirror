@@ -8,7 +8,7 @@
  * into "you are safe" — that verdict belongs to the caller (and to gossip).
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import { bytesEqual, bytesToHex } from '../core/bytes';
 import { verifyConsistency, verifyInclusion } from '../merkle/verify';
 import { bindingLeaf, bindingMessage, sthMessage } from './server';

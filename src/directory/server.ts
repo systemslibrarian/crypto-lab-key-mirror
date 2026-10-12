@@ -12,7 +12,7 @@
  * The deliberately-malicious mode is never the default and is isolated here.
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import { concatBytes, hexToBytes, randomBytes, utf8ToBytes } from '../core/bytes';
 import { MerkleLog } from '../merkle/tree';
 import type { Binding, LookupResponse, SignedTreeHead, ViewName } from './types';

@@ -10,17 +10,17 @@
  * Validated against all three RFC 9381 Appendix B.3 vectors (Examples 16-18).
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
-import { sha512 } from '@noble/hashes/sha2';
-import { bytesToNumberLE, numberToBytesLE } from '@noble/curves/abstract/utils';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha512 } from '@noble/hashes/sha2.js';
+import { bytesToNumberLE, numberToBytesLE } from '@noble/curves/utils.js';
 import { concatBytes } from '../core/bytes';
 
 const SUITE = new Uint8Array([0x03]);
 const COFACTOR = 8n;
-const Q = ed25519.CURVE.n; // group order (prime subgroup)
+const Q = ed25519.Point.Fn.ORDER; // group order (prime subgroup)
 
-type Point = InstanceType<typeof ed25519.ExtendedPoint>;
-const Point = ed25519.ExtendedPoint;
+type Point = InstanceType<typeof ed25519.Point>;
+const Point = ed25519.Point;
 
 /** RFC 8032 §5.1.5 secret-scalar derivation: SHA-512(SK)[0..31], clamped. */
 export function secretScalar(sk: Uint8Array): bigint {
@@ -39,7 +39,7 @@ export function publicKey(sk: Uint8Array): Uint8Array {
 /** string_to_point per RFC 8032 §5.1.3 — returns null for invalid encodings. */
 function stringToPoint(s: Uint8Array): Point | null {
   try {
-    return Point.fromHex(s, false); // strict RFC 8032 decoding
+    return Point.fromBytes(s, false); // strict RFC 8032 decoding
   } catch {
     return null;
   }
@@ -77,7 +77,7 @@ export function nonceRFC8032(sk: Uint8Array, hString: Uint8Array): bigint {
 /** ECVRF_challenge_generation (RFC 9381 §5.4.3): 16-byte challenge over 5 points. */
 export function challenge(points: Point[]): bigint {
   const parts: Uint8Array[] = [SUITE, new Uint8Array([0x02])];
-  for (const p of points) parts.push(p.toRawBytes());
+  for (const p of points) parts.push(p.toBytes());
   parts.push(new Uint8Array([0x00]));
   const cString = sha512(concatBytes(...parts));
   return bytesToNumberLE(cString.slice(0, 16));
@@ -97,15 +97,15 @@ export function vrfProve(sk: Uint8Array, alpha: Uint8Array): VrfProof {
   const x = secretScalar(sk) % Q;
   const pkString = publicKey(sk);
   const { H, ctr } = encodeToCurveTAI(pkString, alpha);
-  const hString = H.toRawBytes();
+  const hString = H.toBytes();
   const Gamma = H.multiplyUnsafe(x);
   const k = nonceRFC8032(sk, hString);
-  const Y = Point.fromHex(pkString, false);
+  const Y = Point.fromBytes(pkString, false);
   const U = Point.BASE.multiplyUnsafe(k);
   const V = H.multiplyUnsafe(k);
   const c = challenge([Y, H, Gamma, U, V]);
   const s = (k + c * x) % Q;
-  const pi = concatBytes(Gamma.toRawBytes(), numberToBytesLE(c, 16), numberToBytesLE(s, 32));
+  const pi = concatBytes(Gamma.toBytes(), numberToBytesLE(c, 16), numberToBytesLE(s, 32));
   return {
     pi,
     beta: proofToHash(pi)!,
@@ -130,7 +130,7 @@ export function proofToHash(pi: Uint8Array): Uint8Array | null {
   if (d === null) return null;
   const gammaCleared = d.Gamma.multiplyUnsafe(COFACTOR);
   return sha512(
-    concatBytes(SUITE, new Uint8Array([0x03]), gammaCleared.toRawBytes(), new Uint8Array([0x00])),
+    concatBytes(SUITE, new Uint8Array([0x03]), gammaCleared.toBytes(), new Uint8Array([0x00])),
   );
 }
 
