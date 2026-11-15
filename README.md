@@ -29,7 +29,7 @@ Security model: the **directory server is the adversary**. Clients verify everyt
 
 ## When to Use It
 
-- Teaching why E2EE messengers (WhatsApp key transparency, iMessage Contact Key Verification, Signal's planned KT) need a transparency layer at all.
+- Teaching why E2EE messengers (WhatsApp key transparency, iMessage Contact Key Verification, Signal's key-transparency-based automatic key verification, available since 11 August 2026) need a transparency layer at all.
 - Explaining the difference between *authentication* (layer 1), *membership* (layer 2), *append-only history* (layer 3), and *global consistency* (layer 4) — and why each one alone is insufficient.
 - Showing what CONIKS/Parakeet/KEYTRANS-lineage systems actually detect, and what they don't.
 - **Do NOT use it** as a key-transparency implementation, as a KEYTRANS wire-format reference, or as evidence that any specific deployed system is secure. The Merkle log here is a flat binding log, not KEYTRANS's VRF-addressed prefix tree.
@@ -49,9 +49,12 @@ Security model: the **directory server is the adversary**. Clients verify everyt
 ## Real-World Usage
 
 - **WhatsApp** ships key transparency built on its auditable key directory (Parakeet lineage).
+- **Signal** offers [automatic key verification](https://signal.org/blog/automatic-key-verification/) (announced 11 August 2026), built on a key transparency log: the app automatically and periodically checks the user's own phone number and username in the log, verifying a connection is initiated from the "View Safety Number" screen, Cloudflare and Trail of Bits serve as independent auditors, and the open-source server was implemented from an earlier draft of the IETF key transparency protocol. The post names no platforms or version numbers.
 - **Apple iMessage** Contact Key Verification has devices automatically cross-check the key directory.
 - **IETF KEYTRANS WG** is standardizing the authenticated-map construction this demo teaches the trust story of.
 - **Certificate Transparency** (RFC 6962/9162) is the same machinery pointed at X.509 certificates — CT logs certificates for domain names, KT logs public keys for user identities.
+
+**Standards reviewed 15 November 2026:** the Signal references were updated from "Signal's planned KT" to the shipped feature described in Signal's 11 August 2026 post *Introducing Automatic Key Verification*; only what that post states is repeated here.
 
 ## How to Run Locally
 
